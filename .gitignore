@@ -10,6 +10,9 @@ DerivedData/
 .build/
 Packages/*/.build/
 
+# Vendored/local package dependencies can be restored separately.
+Packages/SwiftTerm/
+
 # Node / TypeScript
 node_modules/
 npm-debug.log*
