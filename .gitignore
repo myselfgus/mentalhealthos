@@ -1,0 +1,39 @@
+# macOS / Xcode
+.DS_Store
+DerivedData/
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+.swiftpm/
+
+# Swift Package Manager
+.build/
+Packages/*/.build/
+
+# Node / TypeScript
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
+# HealthOS generated runtime outputs
+runs/
+audio/
+patients/
+professionals/
+professionals/*/logs/
+professionals/*/telemetry/
+professionals/*/artifacts/
+patients/*/sessions/*/logs/
+
+# Temporary files
+*.tmp
+*.swp
+*.swo

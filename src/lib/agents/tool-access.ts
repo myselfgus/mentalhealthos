@@ -1,0 +1,18 @@
+export const HEALTHOS_ALLOWED_TOOLS = [
+  "Read",
+  "Write",
+  "Edit",
+  "Bash",
+  "Glob",
+  "Grep",
+  "mcp__healthos__list_patients",
+  "mcp__healthos__search_content",
+  "mcp__healthos__run_pipeline",
+  "mcp__healthos__run_agent_workflow",
+  "mcp__healthos__list_healthos_agents",
+  "mcp__healthos__list_agent_definitions",
+  "mcp__healthos__list_patient_agents",
+  "mcp__healthos__run_patient_agent",
+  "mcp__healthos__list_codex_agents",
+  "mcp__healthos__run_codex_subagent",
+] as const;
