@@ -22,8 +22,12 @@
     <string>public.app-category.medical</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>HealthOS usa o microfone para gravar audio de consultas locais.</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>O HealthOS usa o microfone para gravar novas consultas clínicas e salvar o áudio no workspace local.</string>
     <key>NSSupportsAutomaticTermination</key>
     <false/>
     <key>NSSupportsSuddenTermination</key>

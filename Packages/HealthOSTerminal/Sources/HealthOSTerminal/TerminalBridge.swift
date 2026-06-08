@@ -1,8 +1,29 @@
 import SwiftUI
 import AppKit
 
+private extension TerminalRGB {
+    var nsColor: NSColor {
+        NSColor(
+            srgbRed: CGFloat(red) / 255,
+            green: CGFloat(green) / 255,
+            blue: CGFloat(blue) / 255,
+            alpha: 1
+        )
+    }
+}
+
 #if canImport(SwiftTerm)
 import SwiftTerm
+
+private extension TerminalRGB {
+    var swiftTermColor: SwiftTerm.Color {
+        SwiftTerm.Color(
+            red: UInt16(red) * 257,
+            green: UInt16(green) * 257,
+            blue: UInt16(blue) * 257
+        )
+    }
+}
 
 // MARK: - Terminal Bridge (NSViewRepresentable)
 
@@ -18,6 +39,7 @@ public struct TerminalBridgeView: NSViewRepresentable {
         let terminalView = LocalProcessTerminalView(frame: .zero)
         context.coordinator.terminalView = terminalView
         terminalView.processDelegate = context.coordinator
+        applyTheme(session.theme, to: terminalView)
 
         // Configure appearance
         let fontSize: CGFloat = 13
@@ -40,15 +62,31 @@ public struct TerminalBridgeView: NSViewRepresentable {
         )
 
         session.isRunning = true
+        session.runtimeStatus = session.runtimeStatus.updating(state: .running, detail: "shell ativo")
         return terminalView
     }
 
     public func updateNSView(_ nsView: LocalProcessTerminalView, context: Context) {
-        // No dynamic updates needed
+        applyTheme(session.theme, to: nsView)
     }
 
     public func makeCoordinator() -> Coordinator {
         Coordinator(session: session)
+    }
+
+    private func applyTheme(_ theme: TerminalTheme, to terminalView: LocalProcessTerminalView) {
+        terminalView.wantsLayer = true
+        terminalView.nativeForegroundColor = theme.foreground.nsColor
+        terminalView.nativeBackgroundColor = theme.background.nsColor
+        terminalView.layer?.backgroundColor = theme.background.nsColor.cgColor
+        terminalView.caretColor = theme.caret.nsColor
+        terminalView.caretTextColor = theme.background.nsColor
+        terminalView.selectedTextBackgroundColor = theme.selection.nsColor.withAlphaComponent(0.92)
+        terminalView.useBrightColors = true
+
+        if theme.ansi16.count == 16 {
+            terminalView.installColors(theme.ansi16.map(\.swiftTermColor))
+        }
     }
 
     // MARK: - Coordinator
@@ -76,6 +114,7 @@ public struct TerminalBridgeView: NSViewRepresentable {
             let session = self.session
             Task { @MainActor in
                 session.isRunning = false
+                session.runtimeStatus = session.runtimeStatus.updating(state: .stopped, detail: "exit \(exitCode ?? -1)")
             }
         }
 
@@ -95,10 +134,20 @@ public struct TerminalBridgeView: View {
     public let session: TerminalSession
     public init(session: TerminalSession) { self.session = session }
     public var body: some View {
-        Text("Terminal não disponível — SwiftTerm não encontrado")
-            .foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Terminal nativo indisponivel")
+                .font(.headline.monospaced())
+                .foregroundStyle(Color(nsColor: session.theme.foreground.nsColor))
+            Text("SwiftTerm nao encontrado")
+                .font(.callout.monospaced())
+                .foregroundStyle(Color(nsColor: session.theme.muted.nsColor))
+            Text(session.runtimeStatus.label)
+                .font(.caption.monospaced())
+                .foregroundStyle(Color(nsColor: session.theme.accent.nsColor))
+        }
+        .padding(18)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.black)
+            .background(Color(nsColor: session.theme.background.nsColor))
     }
 }
 #endif

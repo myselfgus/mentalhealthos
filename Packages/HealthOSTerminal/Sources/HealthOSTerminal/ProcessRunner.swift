@@ -30,10 +30,9 @@ public actor ProcessRunner {
             for (key, value) in environment {
                 env[key] = value
             }
-            let localBin = workingDirectory.appendingPathComponent("node_modules/.bin").path
             let defaultPath = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
             let inheritedPath = env["PATH"] ?? defaultPath
-            env["PATH"] = "\(localBin):\(inheritedPath):\(defaultPath)"
+            env["PATH"] = inheritedPath.isEmpty ? defaultPath : "\(inheritedPath):\(defaultPath)"
             process.environment = env
 
             // Stream stdout

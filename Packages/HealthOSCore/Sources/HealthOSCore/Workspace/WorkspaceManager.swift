@@ -107,10 +107,112 @@ public final class WorkspaceManager: @unchecked Sendable {
         try ensureDirectory(dir)
         let data = try encoder.encode(profile)
         try data.write(to: dir.appendingPathComponent("patient.json"))
+        if let index = patients.firstIndex(where: { $0.patientId == profile.patientId }) {
+            patients[index] = profile
+        } else {
+            patients.append(profile)
+        }
+        patients.sort { $0.patientId < $1.patientId }
     }
 
     public func sessionWorkspace(patientId: String, sessionId: String) -> PatientSessionWorkspace {
         PatientSessionWorkspace(patientId: patientId, sessionId: sessionId, patientsBaseDir: patientsDir)
+    }
+
+    @discardableResult
+    public func createPatient(displayName: String, status: PatientStatus = .active) throws -> PatientProfile {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let patientId = nextPatientId()
+        let initials = Self.initials(for: trimmed, fallback: patientId)
+        let profile = PatientProfile(
+            schemaVersion: "1.0",
+            patientId: patientId,
+            identity: PatientIdentity(
+                fullName: trimmed.isEmpty ? nil : trimmed,
+                preferredName: nil,
+                initials: initials,
+                aliases: nil
+            ),
+            patientName: trimmed.isEmpty ? patientId : trimmed,
+            patientInitials: initials,
+            aliases: nil,
+            status: status,
+            demographics: nil,
+            careTeam: nil,
+            clinicalSummary: nil,
+            sessions: [],
+            artifacts: [],
+            privacy: PatientPrivacy(),
+            createdAt: now,
+            lastUpdated: now,
+            source: "healthos-swift-consultation",
+            extendedMetadata: nil
+        )
+        try savePatientProfile(profile)
+        try loadAllPatients()
+        return profile
+    }
+
+    @discardableResult
+    public func createConsultationSession(
+        patientId: String,
+        date: Date = Date(),
+        sourceFile: String? = nil,
+        tags: [String] = ["consulta"]
+    ) throws -> PatientSessionIndex {
+        guard var profile = try loadPatientProfile(patientId) else {
+            throw WorkspaceManagerError.patientNotFound(patientId)
+        }
+
+        let sessionId = nextSessionId(date: date)
+        let workspace = sessionWorkspace(patientId: patientId, sessionId: sessionId)
+        try ensureSessionDirectories(workspace)
+
+        let now = ISO8601DateFormatter().string(from: date)
+        let session = PatientSessionIndex(
+            sessionId: sessionId,
+            sessionNumber: (profile.sessions.map { $0.sessionNumber ?? 0 }.max() ?? 0) + 1,
+            date: now,
+            sourceFile: sourceFile,
+            sourceSlug: sourceFile.map { Self.slug($0) },
+            tags: tags,
+            path: "patients/\(patientId)/sessions/\(sessionId)",
+            processedAt: nil,
+            status: SessionPipelineStatus(),
+            artifacts: [],
+            clinicalDelta: nil
+        )
+
+        profile.sessions.append(session)
+        profile.lastUpdated = now
+        try savePatientProfile(profile)
+        try writeJSON(session, to: workspace.sessionPath)
+        try loadAllPatients()
+        return session
+    }
+
+    @discardableResult
+    public func attachAudio(
+        from sourceURL: URL,
+        patientId: String,
+        sessionId: String,
+        suggestedName: String? = nil
+    ) throws -> URL {
+        let workspace = sessionWorkspace(patientId: patientId, sessionId: sessionId)
+        try ensureSessionDirectories(workspace)
+        let destinationName = suggestedName ?? sourceURL.lastPathComponent
+        let destination = workspace.audioDir.appendingPathComponent(Self.slug(destinationName, preservingExtension: true))
+        if fileManager.fileExists(atPath: destination.path) {
+            try fileManager.removeItem(at: destination)
+        }
+        try fileManager.copyItem(at: sourceURL, to: destination)
+        try registerRecordedAudio(destination, patientId: patientId, sessionId: sessionId)
+        return destination
+    }
+
+    public func registerRecordedAudio(_ audioURL: URL, patientId: String, sessionId: String) throws {
+        try markSessionAudioAvailable(patientId: patientId, sessionId: sessionId, sourceFile: audioURL.lastPathComponent)
     }
 
     // MARK: - Analysis I/O
@@ -216,9 +318,99 @@ public final class WorkspaceManager: @unchecked Sendable {
         }
     }
 
+    private func ensureSessionDirectories(_ workspace: PatientSessionWorkspace) throws {
+        try ensureDirectory(workspace.dir)
+        try ensureDirectory(workspace.sourceDir)
+        try ensureDirectory(workspace.audioDir)
+        try ensureDirectory(workspace.analysisDir)
+        try ensureDirectory(workspace.documentsDir)
+        try ensureDirectory(workspace.artifactsDir)
+        try ensureDirectory(workspace.logsDir)
+    }
+
+    private func writeJSON<T: Encodable>(_ value: T, to url: URL) throws {
+        try ensureDirectory(url.deletingLastPathComponent())
+        let data = try encoder.encode(value)
+        try data.write(to: url)
+    }
+
     private func loadJSON<T: Decodable>(at path: URL) throws -> T? {
         guard fileManager.fileExists(atPath: path.path) else { return nil }
         let data = try Data(contentsOf: path)
         return try decoder.decode(T.self, from: data)
+    }
+
+    private func nextPatientId() -> String {
+        let used = Set(patients.map(\.patientId))
+        var index = 1
+        while true {
+            let candidate = String(format: "PAT_%06d", index)
+            if !used.contains(candidate) { return candidate }
+            index += 1
+        }
+    }
+
+    private func nextSessionId(date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        return "SESSION_\(formatter.string(from: date))"
+    }
+
+    private func markSessionAudioAvailable(patientId: String, sessionId: String, sourceFile: String) throws {
+        guard var profile = try loadPatientProfile(patientId) else {
+            throw WorkspaceManagerError.patientNotFound(patientId)
+        }
+        guard let index = profile.sessions.firstIndex(where: { $0.sessionId == sessionId }) else {
+            throw WorkspaceManagerError.sessionNotFound(patientId: patientId, sessionId: sessionId)
+        }
+
+        let now = ISO8601DateFormatter().string(from: Date())
+        profile.sessions[index].sourceFile = sourceFile
+        profile.sessions[index].status.audio = true
+        profile.sessions[index].processedAt = now
+        profile.lastUpdated = now
+        try savePatientProfile(profile)
+
+        let workspace = sessionWorkspace(patientId: patientId, sessionId: sessionId)
+        try writeJSON(profile.sessions[index], to: workspace.sessionPath)
+        try loadAllPatients()
+    }
+
+    private static func initials(for value: String, fallback: String) -> String {
+        let pieces = value
+            .split(whereSeparator: { $0.isWhitespace || $0 == "-" })
+            .prefix(2)
+            .compactMap(\.first)
+        let initials = String(pieces).uppercased()
+        return initials.isEmpty ? String(fallback.prefix(3)) : initials
+    }
+
+    private static func slug(_ value: String, preservingExtension: Bool = false) -> String {
+        let url = URL(fileURLWithPath: value)
+        let base = preservingExtension ? url.deletingPathExtension().lastPathComponent : value
+        let ext = preservingExtension ? url.pathExtension : ""
+        let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_"))
+        let slugBase = base.unicodeScalars.map { allowed.contains($0) ? Character($0) : "-" }
+        var slug = String(slugBase)
+            .replacingOccurrences(of: "--+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-_"))
+            .lowercased()
+        if slug.isEmpty { slug = "audio-\(UUID().uuidString)" }
+        return ext.isEmpty ? slug : "\(slug).\(ext.lowercased())"
+    }
+}
+
+public enum WorkspaceManagerError: Error, LocalizedError, Sendable {
+    case patientNotFound(String)
+    case sessionNotFound(patientId: String, sessionId: String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .patientNotFound(let patientId):
+            "Paciente \(patientId) nao encontrado no workspace."
+        case .sessionNotFound(let patientId, let sessionId):
+            "Sessao \(sessionId) nao encontrada para \(patientId)."
+        }
     }
 }

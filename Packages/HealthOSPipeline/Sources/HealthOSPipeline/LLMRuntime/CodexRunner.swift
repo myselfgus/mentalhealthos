@@ -66,7 +66,7 @@ public actor CodexRunner: LLMProvider {
         ## Runtime
 
         Voce esta rodando como subprocesso Codex local dentro do HealthOS.
-        Use a configuracao instalada em ~/.codex, incluindo login ChatGPT, MCPs, plugins, skills, regras e profiles disponiveis.
+        Use a configuracao instalada em ~/.codex, incluindo login ChatGPT, plugins, skills, regras e profiles disponiveis.
         Nao peca OPENAI_API_KEY para executar tarefas Codex locais.
         """)
 
@@ -163,7 +163,6 @@ public actor CodexRunner: LLMProvider {
             "/bin",
             "/usr/sbin",
             "/sbin",
-            "\(FileManager.default.homeDirectoryForCurrentUser.path)/.npm-global/bin",
             "\(FileManager.default.homeDirectoryForCurrentUser.path)/.local/bin"
         ]
         return (defaults + [inheritedPath ?? ""])

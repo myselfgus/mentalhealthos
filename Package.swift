@@ -36,6 +36,9 @@ let package = Package(
                 "HealthOSTerminal",
             ],
             path: "HealthOSApp",
+            exclude: [
+                "Info.plist",
+            ],
             resources: [
                 .copy("Resources"),
             ],
@@ -47,6 +50,17 @@ let package = Package(
                     "-Xlinker", "HealthOSApp/Info.plist",
                 ]),
             ]
+        ),
+        .testTarget(
+            name: "HealthOSIntegrationTests",
+            dependencies: [
+                "HealthOSCore",
+                "HealthOSPipeline",
+                "HealthOSAgents",
+                "HealthOSTerminal",
+                "HealthOSUI",
+            ],
+            path: "Tests/HealthOSIntegrationTests"
         ),
     ]
 )

@@ -5,7 +5,7 @@ import HealthOSAgents
 public struct AgentListView: View {
     public init() {}
 
-    private var tools: [MCPTool] { healthOSTools }
+    private var tools: [LocalToolDescriptor] { healthOSTools }
     private var definitions: [AgentDefinition] { AgentRegistry.shared.listAgentDefinitions() }
 
     public var body: some View {
@@ -21,7 +21,7 @@ public struct AgentListView: View {
 
                 HealthOSPanel {
                     VStack(alignment: .leading, spacing: 12) {
-                        SectionHeader(title: "MCP Tools", subtitle: "Ferramentas clínicas disponíveis para runtimes LLM", systemImage: "wrench.and.screwdriver.fill")
+                        SectionHeader(title: "Ferramentas locais", subtitle: "Operações clínicas disponíveis para o runtime Swift", systemImage: "wrench.and.screwdriver.fill")
                         ForEach(tools, id: \.name) { tool in
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(tool.name)

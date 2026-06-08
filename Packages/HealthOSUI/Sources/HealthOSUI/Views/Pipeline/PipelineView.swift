@@ -1,14 +1,13 @@
 import SwiftUI
 import HealthOSCore
-import HealthOSTerminal
+import HealthOSPipeline
 
 public struct PipelineView: View {
     @Environment(WorkspaceManager.self) private var workspace
     @State private var runningStage: PipelineStage?
     @State private var runOutput = ""
-    @State private var lastExitCode: Int32?
 
-    private let runner = ProcessRunner()
+    private let engine = PipelineEngine()
 
     public init() {}
 
@@ -36,7 +35,7 @@ public struct PipelineView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Pipeline clínico")
                 .font(.system(size: 30, weight: .semibold, design: .rounded))
-            Text("Acompanhe a cobertura por etapa e use os scripts TypeScript correspondentes quando precisar executar processamento.")
+            Text("Acompanhe a cobertura por etapa e execute o processamento clínico nativo em Swift.")
                 .font(.healthCallout)
                 .foregroundStyle(.secondary)
         }
@@ -59,15 +58,16 @@ public struct PipelineView: View {
                                 .foregroundStyle(.secondary)
                         }
                         ProgressView(value: sessions.isEmpty ? 0 : Double(completed), total: Double(max(sessions.count, 1)))
-                        Text(stage.npmScript)
+                        Text(stage.nativeCommand.shellString)
                             .font(.caption.monospaced())
                             .foregroundStyle(.secondary)
+                            .lineLimit(2)
                             .textSelection(.enabled)
 
                         Button {
                             run(stage)
                         } label: {
-                            Label(runningStage == stage ? "Executando" : "Rodar com Codex", systemImage: runningStage == stage ? "hourglass" : "play.fill")
+                            Label(runningStage == stage ? "Executando" : "Rodar", systemImage: runningStage == stage ? "hourglass" : "play.fill")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.borderedProminent)
@@ -83,8 +83,8 @@ public struct PipelineView: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     SectionHeader(
-                        title: "Execução Codex",
-                        subtitle: "Scripts TypeScript com HEALTHOS_LLM_RUNTIME=Codex",
+                        title: "Execução nativa",
+                        subtitle: "Executor Swift HealthOSPipeline",
                         systemImage: "terminal.fill"
                     )
                     Spacer()
@@ -94,10 +94,6 @@ public struct PipelineView: View {
                         Text(runningStage.displayName)
                             .font(.healthCaption)
                             .foregroundStyle(.secondary)
-                    } else if let lastExitCode {
-                        Text(lastExitCode == 0 ? "concluído" : "erro \(lastExitCode)")
-                            .font(.healthCaption)
-                            .foregroundStyle(lastExitCode == 0 ? Color.healthPositive : Color.healthDestructive)
                     }
                 }
 
@@ -151,110 +147,52 @@ public struct PipelineView: View {
     }
 
     private func run(_ stage: PipelineStage) {
+        let pendingSessions = sessions
+            .filter { !$0.1.status.isComplete(stage) }
+            .map { (patient: $0.0, session: $0.1) }
+
         runningStage = stage
-        lastExitCode = nil
-        runOutput = "$ \(stage.npmScript)\n\n"
+        runOutput = """
+        $ \(stage.nativeCommand.shellString)
+        Workspace: \(workspace.baseDir.path)
+        Etapa: \(stage.displayName)
+        Sessoes pendentes: \(pendingSessions.count)
 
+        """
+
+        guard !pendingSessions.isEmpty else {
+            runOutput += "Nenhuma sessao pendente para \(stage.displayName).\n"
+            runningStage = nil
+            return
+        }
+
+        let baseDir = workspace.baseDir
         Task {
-            var environment = ProcessInfo.processInfo.environment
-            environment["HEALTHOS_BASE"] = workspace.baseDir.path
-            environment["HEALTHOS_LLM_RUNTIME"] = "Codex"
-            environment["HEALTHOS_CHAT_RUNTIME"] = "Codex"
-            environment["HEALTHOS_CODEX_SANDBOX"] = environment["HEALTHOS_CODEX_SANDBOX"] ?? "workspace-write"
-            if let professional = workspace.activeProfessional {
-                environment["HEALTHOS_PROFESSIONAL_ID"] = professional.id
-            }
+            for target in pendingSessions {
+                let result = await engine.run(
+                    stage: stage,
+                    baseDir: baseDir,
+                    patientId: target.patient.patientId,
+                    sessionId: target.session.sessionId
+                )
 
-            let dependenciesReady = await ensureNodeDependencies(environment: environment)
-            guard dependenciesReady else {
                 await MainActor.run {
-                    runningStage = nil
-                }
-                return
-            }
-
-            let stream = await runner.run(
-                command: "npm",
-                arguments: ["run", npmScriptName(for: stage)],
-                workingDirectory: workspace.baseDir,
-                environment: environment
-            )
-
-            do {
-                for try await output in stream {
-                    await MainActor.run {
-                        switch output {
-                        case .stdout(let text), .stderr(let text):
-                            runOutput += text
-                        case .exit(let code):
-                            lastExitCode = code
-                            runningStage = nil
-                            runOutput += "\n[exit \(code)]\n"
-                            try? workspace.loadAllPatients()
-                        }
-                    }
-                }
-            } catch {
-                await MainActor.run {
-                    runOutput += "\nErro: \(error.localizedDescription)\n"
-                    runningStage = nil
+                    runOutput += format(result, patientId: target.patient.patientId, sessionId: target.session.sessionId)
                 }
             }
-        }
-    }
 
-    private func ensureNodeDependencies(environment: [String: String]) async -> Bool {
-        let tsxPath = workspace.baseDir
-            .appendingPathComponent("node_modules")
-            .appendingPathComponent(".bin")
-            .appendingPathComponent("tsx")
-
-        guard !FileManager.default.fileExists(atPath: tsxPath.path) else {
-            return true
-        }
-
-        await MainActor.run {
-            runOutput += "Dependências Node ausentes. Rodando npm install...\n\n"
-        }
-
-        let stream = await runner.run(
-            command: "npm",
-            arguments: ["install"],
-            workingDirectory: workspace.baseDir,
-            environment: environment
-        )
-
-        var exitCode: Int32 = -1
-        do {
-            for try await output in stream {
-                await MainActor.run {
-                    switch output {
-                    case .stdout(let text), .stderr(let text):
-                        runOutput += text
-                    case .exit(let code):
-                        exitCode = code
-                        runOutput += "\n[npm install exit \(code)]\n\n"
-                    }
-                }
-            }
-        } catch {
             await MainActor.run {
-                runOutput += "\nErro durante npm install: \(error.localizedDescription)\n"
+                try? workspace.loadAllPatients()
+                runningStage = nil
+                runOutput += "\n[finalizado]\n"
             }
-            return false
         }
-
-        return exitCode == 0
     }
 
-    private func npmScriptName(for stage: PipelineStage) -> String {
-        switch stage {
-        case .transcribe: "transcribe"
-        case .process: "pipeline:process"
-        case .speech: "pipeline:speech"
-        case .asl: "pipeline:asl"
-        case .vdlp: "pipeline:vdlp"
-        case .gem: "pipeline:gem"
-        }
+    private func format(_ result: PipelineStageResult, patientId: String, sessionId: String) -> String {
+        let artifacts = result.artifacts.map(\.path)
+        let artifactLine = artifacts.isEmpty ? "" : "\n  outputs: \(artifacts.joined(separator: ", "))"
+        let errorLine = result.error.map { "\n  erro: \($0.code) - \($0.details ?? $0.message)" } ?? ""
+        return "[\(result.status.rawValue)] \(patientId)/\(sessionId): \(result.message)\(artifactLine)\(errorLine)\n"
     }
 }

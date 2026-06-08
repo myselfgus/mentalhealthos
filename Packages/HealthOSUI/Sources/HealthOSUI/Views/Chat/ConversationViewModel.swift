@@ -3,10 +3,101 @@ import Combine
 import HealthOSCore
 import HealthOSPipeline
 
+public enum ChatMessageRole: Sendable {
+    case user
+    case assistant
+    case system
+}
+
+public enum ChatMessageStatus: Equatable, Sendable {
+    case queued
+    case sending
+    case sent
+    case succeeded
+    case failed(String)
+}
+
+public enum ChatActivityState: Equatable, Sendable {
+    case idle
+    case sending
+    case succeeded
+    case failed(String)
+}
+
+public struct ChatRuntimeMetadata: Equatable, Sendable {
+    public var provider: String?
+    public var runtime: String?
+    public var model: String?
+    public var usageSummary: String?
+    public var startedAt: Date?
+    public var completedAt: Date?
+    public var isFallback: Bool
+    public var detail: String?
+
+    public init(
+        provider: String? = nil,
+        runtime: String? = nil,
+        model: String? = nil,
+        usageSummary: String? = nil,
+        startedAt: Date? = nil,
+        completedAt: Date? = nil,
+        isFallback: Bool = false,
+        detail: String? = nil
+    ) {
+        self.provider = provider
+        self.runtime = runtime
+        self.model = model
+        self.usageSummary = usageSummary
+        self.startedAt = startedAt
+        self.completedAt = completedAt
+        self.isFallback = isFallback
+        self.detail = detail
+    }
+
+    public var elapsedSeconds: TimeInterval? {
+        guard let startedAt, let completedAt else { return nil }
+        return completedAt.timeIntervalSince(startedAt)
+    }
+
+    public var compactSummary: String? {
+        var items: [String] = []
+        if let runtime, !runtime.isEmpty { items.append(runtime) }
+        if let model, !model.isEmpty { items.append(model) }
+        if let usageSummary, !usageSummary.isEmpty { items.append(usageSummary) }
+        if isFallback { items.append("fallback local") }
+        if let elapsedSeconds { items.append(String(format: "%.1fs", elapsedSeconds)) }
+        return items.isEmpty ? nil : items.joined(separator: " · ")
+    }
+}
+
 public struct ChatMessage: Identifiable {
-    public let id = UUID()
-    public let text: String
-    public let isCurrentUser: Bool
+    public let id: UUID
+    public var text: String
+    public var role: ChatMessageRole
+    public var status: ChatMessageStatus
+    public var metadata: ChatRuntimeMetadata
+
+    public init(
+        id: UUID = UUID(),
+        text: String,
+        role: ChatMessageRole,
+        status: ChatMessageStatus = .succeeded,
+        metadata: ChatRuntimeMetadata = ChatRuntimeMetadata()
+    ) {
+        self.id = id
+        self.text = text
+        self.role = role
+        self.status = status
+        self.metadata = metadata
+    }
+
+    public init(text: String, isCurrentUser: Bool) {
+        self.init(text: text, role: isCurrentUser ? .user : .assistant)
+    }
+
+    public var isCurrentUser: Bool {
+        role == .user
+    }
 }
 
 @MainActor
@@ -14,37 +105,88 @@ public class ConversationViewModel: ObservableObject {
     @Published public var messages: [ChatMessage] = []
     @Published public var isTyping = false
     @Published public var inputText = ""
+    @Published public private(set) var activityState: ChatActivityState = .idle
+    @Published public private(set) var lastRuntimeSummary: String?
 
     private weak var workspace: WorkspaceManager?
+    private var runtime: LLMRuntimeType = .defaultRuntime
 
     public init() {
+        let now = Date()
         messages = [
-            ChatMessage(text: "Pronto para consultar o workspace clínico via Codex local. Posso resumir pacientes, sessões, pendências do pipeline e artefatos carregados.", isCurrentUser: false)
+            ChatMessage(
+                text: "Pronto para consultar o workspace clínico via Codex local. Posso resumir pacientes, sessões, pendências do pipeline e artefatos carregados.",
+                role: .assistant,
+                status: .succeeded,
+                metadata: ChatRuntimeMetadata(provider: "HealthOS UI", runtime: "local", completedAt: now)
+            )
         ]
     }
 
-    public func configure(workspace: WorkspaceManager) {
+    public func configure(workspace: WorkspaceManager, runtime: LLMRuntimeType = .defaultRuntime) {
         self.workspace = workspace
+        self.runtime = runtime
+    }
+
+    public var isSendDisabled: Bool {
+        inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isTyping
     }
 
     public func sendMessage() {
         let prompt = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !prompt.isEmpty else { return }
+        guard !prompt.isEmpty, !isTyping else { return }
 
-        messages.append(ChatMessage(text: prompt, isCurrentUser: true))
+        let requestID = UUID()
+        let startedAt = Date()
+        messages.append(
+            ChatMessage(
+                id: requestID,
+                text: prompt,
+                role: .user,
+                status: .sending,
+                metadata: ChatRuntimeMetadata(provider: "HealthOS Chat", startedAt: startedAt)
+            )
+        )
         inputText = ""
         isTyping = true
+        activityState = .sending
 
         Task { @MainActor in
-            let reply = await codexResponse(for: prompt)
+            let outcome = await runtimeResponse(for: prompt, startedAt: startedAt)
             isTyping = false
-            messages.append(ChatMessage(text: reply, isCurrentUser: false))
+            activityState = outcome.activityState
+            lastRuntimeSummary = outcome.metadata.compactSummary
+            updateMessage(id: requestID, status: outcome.userStatus, completedAt: outcome.metadata.completedAt ?? Date(), detail: outcome.userDetail)
+            messages.append(
+                ChatMessage(
+                    text: outcome.text,
+                    role: .assistant,
+                    status: outcome.assistantStatus,
+                    metadata: outcome.metadata
+                )
+            )
         }
     }
 
-    private func codexResponse(for prompt: String) async -> String {
+    private func runtimeResponse(for prompt: String, startedAt: Date) async -> ChatCompletionOutcome {
         guard let workspace else {
-            return "Workspace ainda não está disponível nesta conversa."
+            let completedAt = Date()
+            let metadata = ChatRuntimeMetadata(
+                provider: "HealthOS UI",
+                runtime: "local",
+                startedAt: startedAt,
+                completedAt: completedAt,
+                isFallback: true,
+                detail: "Workspace indisponível"
+            )
+            return ChatCompletionOutcome(
+                text: "Workspace ainda não está disponível nesta conversa.",
+                userStatus: .failed("Workspace indisponível"),
+                assistantStatus: .failed("Workspace indisponível"),
+                activityState: .failed("Workspace indisponível"),
+                metadata: metadata,
+                userDetail: "Workspace indisponível"
+            )
         }
 
         let request = LLMRequest(
@@ -53,29 +195,101 @@ public class ConversationViewModel: ObservableObject {
             temperature: 0.2,
             timeoutSeconds: 600,
             useCache: false,
-            model: "codex-cli"
+            model: runtime.cliName
         )
 
         do {
-            let runner = CodexRunner(workingDirectory: workspace.baseDir)
+            let runner = try LLMRuntimeProviderFactory.makeProvider(for: runtime, baseDir: workspace.baseDir)
             let response = try await runner.complete(request: request)
+            let completedAt = Date()
+            var metadata = ChatRuntimeMetadata(
+                provider: runner.name,
+                runtime: response.runtime,
+                model: response.model,
+                usageSummary: response.usage?.compactSummary,
+                startedAt: startedAt,
+                completedAt: completedAt,
+                isFallback: false
+            )
             if response.content.isEmpty {
-                return localResponse(for: prompt, workspace: workspace)
+                metadata.isFallback = true
+                metadata.detail = "Resposta vazia do Codex; fallback local aplicado"
+                return ChatCompletionOutcome(
+                    text: localResponse(for: prompt, workspace: workspace),
+                    userStatus: .sent,
+                    assistantStatus: .succeeded,
+                    activityState: .succeeded,
+                    metadata: metadata,
+                    userDetail: nil
+                )
             }
-            return response.content
+            return ChatCompletionOutcome(
+                text: response.content,
+                userStatus: .sent,
+                assistantStatus: .succeeded,
+                activityState: .succeeded,
+                metadata: metadata,
+                userDetail: nil
+            )
         } catch {
             let detail = error.localizedDescription
-            if detail.contains("codex") || detail.contains("No such file") {
-                return """
-                Codex local não foi encontrado pelo app.
+            let completedAt = Date()
+            let shortReason = missingLocalRuntime(detail)
+                ? "\(runtime.displayName) não encontrado"
+                : "\(runtime.displayName) não respondeu"
+            let metadata = ChatRuntimeMetadata(
+                provider: runtime.displayName,
+                runtime: runtime.isLocalCLI ? "local" : "api",
+                model: request.model,
+                startedAt: startedAt,
+                completedAt: completedAt,
+                isFallback: true,
+                detail: detail
+            )
+            if missingLocalRuntime(detail) {
+                return ChatCompletionOutcome(
+                    text: """
+                \(runtime.displayName) não foi encontrado pelo app.
 
-                Verifique se o comando `codex` funciona no Terminal e reinicie o app pelo Xcode. O app agora procura em `/opt/homebrew/bin`, `/usr/local/bin`, `~/.npm-global/bin` e `~/.local/bin`.
+                Verifique se o comando `\(runtime.cliName)` funciona no Terminal e reinicie o app pelo Xcode. O app herda o PATH do processo e procura em caminhos locais comuns de CLIs.
 
                 Erro: \(detail)
-                """
+                """,
+                    userStatus: .sent,
+                    assistantStatus: .failed(shortReason),
+                    activityState: .failed(shortReason),
+                    metadata: metadata,
+                    userDetail: nil
+                )
             }
-            return "Codex local não respondeu: \(detail)\n\n" + localResponse(for: prompt, workspace: workspace)
+            return ChatCompletionOutcome(
+                text: "\(runtime.displayName) não respondeu: \(detail)\n\n" + localResponse(for: prompt, workspace: workspace),
+                userStatus: .sent,
+                assistantStatus: .failed(shortReason),
+                activityState: .failed(shortReason),
+                metadata: metadata,
+                userDetail: nil
+            )
         }
+    }
+
+    private func missingLocalRuntime(_ detail: String) -> Bool {
+        runtime.isLocalCLI && (
+            detail.localizedCaseInsensitiveContains(runtime.cliName)
+            || detail.localizedCaseInsensitiveContains("No such file")
+            || detail.localizedCaseInsensitiveContains("not found")
+        )
+    }
+
+    private func updateMessage(id: UUID, status: ChatMessageStatus, completedAt: Date, detail: String?) {
+        guard let index = messages.firstIndex(where: { $0.id == id }) else { return }
+        var message = messages[index]
+        message.status = status
+        message.metadata.completedAt = completedAt
+        if let detail {
+            message.metadata.detail = detail
+        }
+        messages[index] = message
     }
 
     private func buildSystemPrompt(workspace: WorkspaceManager) -> String {
@@ -128,5 +342,27 @@ public class ConversationViewModel: ObservableObject {
         }
 
         return "Resumo atual: \(workspace.patients.count) pacientes, \(stats.totalSessions) sessões, \(stats.completedAnalyses) análises completas e \(stats.pendingStages) etapas pendentes."
+    }
+}
+
+private struct ChatCompletionOutcome {
+    let text: String
+    let userStatus: ChatMessageStatus
+    let assistantStatus: ChatMessageStatus
+    let activityState: ChatActivityState
+    let metadata: ChatRuntimeMetadata
+    let userDetail: String?
+}
+
+private extension LLMUsage {
+    var compactSummary: String {
+        var parts = ["\(totalTokens) tokens"]
+        if let cacheReadTokens, cacheReadTokens > 0 {
+            parts.append("\(cacheReadTokens) cache read")
+        }
+        if let cacheWriteTokens, cacheWriteTokens > 0 {
+            parts.append("\(cacheWriteTokens) cache write")
+        }
+        return parts.joined(separator: " · ")
     }
 }

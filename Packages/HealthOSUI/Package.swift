@@ -11,7 +11,6 @@ let package = Package(
         .package(path: "../HealthOSCore"),
         .package(path: "../HealthOSPipeline"),
         .package(path: "../HealthOSAgents"),
-        .package(path: "../HealthOSTerminal"),
     ],
     targets: [
         .target(
@@ -20,7 +19,6 @@ let package = Package(
                 "HealthOSCore",
                 "HealthOSPipeline",
                 "HealthOSAgents",
-                "HealthOSTerminal",
             ],
             path: "Sources/HealthOSUI"
         ),

@@ -28,6 +28,7 @@ struct ContentView: View {
             }
 
             Section("Clínica") {
+                sidebarItem(.consultation)
                 sidebarItem(.patients)
                 sidebarItem(.pipeline)
             }
@@ -92,6 +93,8 @@ struct ContentView: View {
                 DashboardView()
             case .chat:
                 ConversationView()
+            case .consultation:
+                ConsultationIntakeView()
             case .patients:
                 PatientListView()
             case .pipeline:

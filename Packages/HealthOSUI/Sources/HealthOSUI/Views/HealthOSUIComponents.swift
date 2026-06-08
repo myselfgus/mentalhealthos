@@ -120,19 +120,6 @@ struct MetricRow: View {
     }
 }
 
-extension SessionPipelineStatus {
-    func isComplete(_ stage: PipelineStage) -> Bool {
-        switch stage {
-        case .transcribe: audio || transcription
-        case .process: transcription
-        case .speech: patientSpeech
-        case .asl: asl
-        case .vdlp: vdlp
-        case .gem: gem
-        }
-    }
-}
-
 extension PatientStatus {
     var displayName: String {
         switch self {

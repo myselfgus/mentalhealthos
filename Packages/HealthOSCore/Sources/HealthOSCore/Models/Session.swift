@@ -73,6 +73,17 @@ public struct SessionPipelineStatus: Codable, Sendable {
     public var progress: Double {
         Double(completedCount) / 6.0
     }
+
+    public func isComplete(_ stage: PipelineStage) -> Bool {
+        switch stage {
+        case .transcribe: audio || transcription
+        case .process: transcription
+        case .speech: patientSpeech
+        case .asl: asl
+        case .vdlp: vdlp
+        case .gem: gem
+        }
+    }
 }
 
 // MARK: - Artifact Index

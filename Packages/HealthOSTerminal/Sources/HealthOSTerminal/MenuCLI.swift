@@ -31,13 +31,23 @@ public struct ProjectCounts {
 }
 
 // MARK: - Menu CLI
-    public final class MenuCLI {
+public final class MenuCLI {
     public let workspaceManager: WorkspaceManager
     public let runner = ProcessRunner()
-    public var selectedRuntime = "Codex"
+    public let pipelineRunner: any PipelineStageRunning
+    public var selectedRuntime: LLMRuntimeType
+    public var terminalTheme: TerminalTheme
 
-    public init(workspaceManager: WorkspaceManager) {
+    public init(
+        workspaceManager: WorkspaceManager,
+        pipelineRunner: any PipelineStageRunning = NativePipelineEngineRunner(),
+        selectedRuntime: LLMRuntimeType? = nil,
+        terminalTheme: TerminalTheme? = nil
+    ) {
         self.workspaceManager = workspaceManager
+        self.pipelineRunner = pipelineRunner
+        self.selectedRuntime = selectedRuntime ?? LLMRuntimePreference.resolve()
+        self.terminalTheme = terminalTheme ?? TerminalTheme.resolve(from: ProcessInfo.processInfo.environment)
     }
 
     public func collectCounts() -> ProjectCounts {
@@ -86,6 +96,44 @@ public struct ProjectCounts {
         return String(repeating: "█", count: filled) + String(repeating: "░", count: width - filled)
     }
 
+    public var runtimeStatusLabel: String {
+        TerminalRuntimeStatus(
+            runtimeName: selectedRuntime.displayName,
+            state: .ready,
+            detail: selectedRuntime.cliName
+        ).label
+    }
+
+    private var ansiEnabled: Bool {
+        ProcessInfo.processInfo.environment["NO_COLOR"] == nil
+    }
+
+    private func styled(
+        _ text: String,
+        color: TerminalRGB? = nil,
+        background: TerminalRGB? = nil,
+        bold: Bool = false
+    ) -> String {
+        guard ansiEnabled else { return text }
+
+        var prefix = ""
+        if bold { prefix += "\u{001B}[1m" }
+        if let color { prefix += color.ansiForeground }
+        if let background { prefix += background.ansiBackground }
+        return "\(prefix)\(text)\u{001B}[0m"
+    }
+
+    private func badge(_ text: String, color: TerminalRGB) -> String {
+        styled("[\(text)]", color: color, bold: true)
+    }
+
+    private func shortcutDetail(_ id: String, fallback: String) -> String {
+        guard let shortcut = PipelineShortcuts.shortcut(for: id) else {
+            return fallback
+        }
+        return "\(shortcut.command) | \(shortcut.detail)"
+    }
+
     public func intro() async {
         let steps: [(String, Double)] = [
             ("boot", 0.12),
@@ -99,47 +147,61 @@ public struct ProjectCounts {
         for (label, progress) in steps {
             print("\u{001B}[2J\u{001B}[H", terminator: "") // Clear screen
             print("")
-            print("\u{001B}[36m\u{001B}[1mHealthOS Psy\u{001B}[0m")
-            print("\u{001B}[2m----------------------------------------\u{001B}[0m")
-            print("\u{001B}[2mworkspace\u{001B}[0m \(workspaceManager.baseDir.path)")
-            print("\u{001B}[2mruntime  \u{001B}[0m \u{001B}[35m[\(selectedRuntime)]\u{001B}[0m")
+            print(styled("HealthOS Psy", color: terminalTheme.accent, bold: true))
+            print(styled("----------------------------------------", color: terminalTheme.muted))
+            print("\(styled("workspace", color: terminalTheme.muted, bold: true)) \(workspaceManager.baseDir.path)")
+            print("\(styled("runtime ", color: terminalTheme.muted, bold: true)) \(badge(runtimeStatusLabel, color: terminalTheme.accent))")
+            print("\(styled("tema    ", color: terminalTheme.muted, bold: true)) \(badge(terminalTheme.displayName, color: terminalTheme.success))")
             print("")
-            print("\u{001B}[36m\(frame(progress))\u{001B}[0m \(Int(round(progress * 100)))%")
-            print("\u{001B}[2m\(label)\u{001B}[0m")
+            print("\(styled(frame(progress), color: terminalTheme.accent, bold: true)) \(Int(round(progress * 100)))%")
+            print(styled(label, color: terminalTheme.muted, bold: true))
             try? await Task.sleep(nanoseconds: 90_000_000)
         }
     }
 
     public func renderMenu(actions: [MenuAction]) {
-        print("\n\u{001B}[1mPipeline\u{001B}[0m")
+        print("\n\(styled("Pipeline", color: terminalTheme.foreground, bold: true))")
         for action in actions.prefix(6) {
-            print("\u{001B}[36m[\(action.key)]\u{001B}[0m \u{001B}[1m\(action.label)\u{001B}[0m \u{001B}[2m\(action.detail)\u{001B}[0m")
+            print("\(badge(action.key, color: terminalTheme.accent)) \(styled(action.label, color: terminalTheme.foreground, bold: true)) \(styled(renderedDetail(for: action), color: terminalTheme.muted))")
         }
 
-        print("\n\u{001B}[1mOperacao\u{001B}[0m")
+        print("\n\(styled("Operacao", color: terminalTheme.foreground, bold: true))")
         for action in actions.dropFirst(6) {
-            print("\u{001B}[35m[\(action.key)]\u{001B}[0m \u{001B}[1m\(action.label)\u{001B}[0m \u{001B}[2m\(action.detail)\u{001B}[0m")
+            print("\(badge(action.key, color: terminalTheme.warning)) \(styled(action.label, color: terminalTheme.foreground, bold: true)) \(styled(renderedDetail(for: action), color: terminalTheme.muted))")
         }
 
         print("")
-        print("\u{001B}[31m[0]\u{001B}[0m Sair")
+        print("\(badge("0", color: terminalTheme.error)) Sair")
         print("")
     }
 
-    public func executeScript(command: String, args: [String], description: String) async throws {
-        print("\n\u{001B}[36mExecutando: \(description)\u{001B}[0m")
-        var env = ProcessInfo.processInfo.environment
+    private func renderedDetail(for action: MenuAction) -> String {
+        if action.key.uppercased() == "R" {
+            return runtimeStatusLabel
+        }
+        return action.detail
+    }
+
+    private func operationEnvironment() -> [String: String] {
+        var env = LLMRuntimePreference.environment(
+            from: ProcessInfo.processInfo.environment,
+            runtime: selectedRuntime
+        )
         env["HEALTHOS_BASE"] = workspaceManager.baseDir.path
-        env["HEALTHOS_LLM_RUNTIME"] = selectedRuntimeName
-        env["HEALTHOS_CHAT_RUNTIME"] = selectedRuntimeName
         env["HEALTHOS_CODEX_SANDBOX"] = env["HEALTHOS_CODEX_SANDBOX"] ?? "workspace-write"
+        for (key, value) in terminalTheme.environmentDefaults where env[key] == nil {
+            env[key] = value
+        }
+        env["HEALTHOS_TERMINAL_THEME"] = terminalTheme.identifier.rawValue
         if let prof = workspaceManager.activeProfessional {
             env["HEALTHOS_PROFESSIONAL_ID"] = prof.id
         }
+        return env
+    }
 
-        if command == "npm" {
-            try await ensureNodeDependencies(environment: env)
-        }
+    public func executeScript(command: String, args: [String], description: String) async throws {
+        print("\n\(styled("Executando: \(description)", color: terminalTheme.accent, bold: true))")
+        let env = operationEnvironment()
 
         let stream = await runner.run(command: command, arguments: args, workingDirectory: workspaceManager.baseDir, environment: env)
         for try await output in stream {
@@ -150,74 +212,50 @@ public struct ProjectCounts {
                 print(text, terminator: "")
             case .exit(let code):
                 if code == 0 {
-                    print("\n\u{001B}[32m\(description) concluido.\u{001B}[0m")
+                    print("\n\(styled("\(description) concluido.", color: terminalTheme.success, bold: true))")
                 } else {
-                    print("\n\u{001B}[31m\(description) terminou com codigo \(code).\u{001B}[0m")
+                    print("\n\(styled("\(description) terminou com codigo \(code).", color: terminalTheme.error, bold: true))")
                 }
             }
         }
     }
 
-    private func ensureNodeDependencies(environment: [String: String]) async throws {
-        let tsxPath = workspaceManager.baseDir
-            .appendingPathComponent("node_modules")
-            .appendingPathComponent(".bin")
-            .appendingPathComponent("tsx")
-
-        guard !FileManager.default.fileExists(atPath: tsxPath.path) else {
-            return
-        }
-
-        print("\u{001B}[33mDependências Node ausentes. Rodando npm install...\u{001B}[0m")
-        let stream = await runner.run(
-            command: "npm",
-            arguments: ["install"],
-            workingDirectory: workspaceManager.baseDir,
-            environment: environment
+    public func executePipelineStage(_ stage: PipelineStage, description: String) async throws {
+        print("\n\(styled("Executando etapa Swift: \(description)", color: terminalTheme.accent, bold: true))")
+        let context = TerminalPipelineExecutionContext(
+            workspaceManager: workspaceManager,
+            runtime: selectedRuntime,
+            environment: operationEnvironment()
         )
-
-        var exitCode: Int32 = -1
-        for try await output in stream {
-            switch output {
-            case .stdout(let text), .stderr(let text):
-                print(text, terminator: "")
-            case .exit(let code):
-                exitCode = code
-            }
-        }
-
-        guard exitCode == 0 else {
-            throw NSError(
-                domain: "HealthOSTerminal",
-                code: Int(exitCode),
-                userInfo: [NSLocalizedDescriptionKey: "npm install terminou com codigo \(exitCode)."]
-            )
+        let result = try await pipelineRunner.run(stage: stage, context: context)
+        print(styled(result.message, color: terminalTheme.success, bold: true))
+        if !result.outputRefs.isEmpty {
+            print(styled("Outputs: \(result.outputRefs.joined(separator: ", "))", color: terminalTheme.muted))
         }
     }
 
     public func buildActions() -> [MenuAction] {
         return [
-            MenuAction(key: "1", label: "Transcrever audios", detail: "sessions/*/source/audio -> source/transcription.json") {
-                try await self.executeScript(command: "npm", args: ["run", "transcribe"], description: "Transcrever audios")
+            MenuAction(key: "1", label: "Transcrever audios", detail: self.shortcutDetail("transcribe", fallback: "sessions/*/source/audio -> source/transcription.json")) {
+                try await self.executePipelineStage(.transcribe, description: "Transcrever audios")
             },
-            MenuAction(key: "2", label: "Processar transcricoes", detail: "legado: audio/transcriptions -> patients/PAT_000001") {
-                try await self.executeScript(command: "npm", args: ["run", "pipeline:process"], description: "Processar transcricoes")
+            MenuAction(key: "2", label: "Processar transcricoes", detail: self.shortcutDetail("process", fallback: "legado: audio/transcriptions -> patients/PAT_000001")) {
+                try await self.executePipelineStage(.process, description: "Processar transcricoes")
             },
-            MenuAction(key: "3", label: "Extrair fala do paciente", detail: "sessions/source -> sessions/analysis/patient-speech") {
-                try await self.executeScript(command: "npm", args: ["run", "pipeline:speech"], description: "Extrair fala do paciente")
+            MenuAction(key: "3", label: "Extrair fala do paciente", detail: self.shortcutDetail("speech", fallback: "sessions/source -> sessions/analysis/patient-speech")) {
+                try await self.executePipelineStage(.speech, description: "Extrair fala do paciente")
             },
-            MenuAction(key: "4", label: "Gerar ASL", detail: "sessions/analysis/asl.json") {
-                try await self.executeScript(command: "npm", args: ["run", "pipeline:asl"], description: "Gerar ASL")
+            MenuAction(key: "4", label: "Gerar ASL", detail: self.shortcutDetail("asl", fallback: "sessions/analysis/asl.json")) {
+                try await self.executePipelineStage(.asl, description: "Gerar ASL")
             },
-            MenuAction(key: "5", label: "Gerar VDLP", detail: "sessions/analysis/vdlp.json") {
-                try await self.executeScript(command: "npm", args: ["run", "pipeline:vdlp"], description: "Gerar VDLP")
+            MenuAction(key: "5", label: "Gerar VDLP", detail: self.shortcutDetail("vdlp", fallback: "sessions/analysis/vdlp.json")) {
+                try await self.executePipelineStage(.vdlp, description: "Gerar VDLP")
             },
-            MenuAction(key: "6", label: "Gerar GEM", detail: "sessions/analysis/gem.json") {
-                try await self.executeScript(command: "npm", args: ["run", "pipeline:gem"], description: "Gerar GEM")
+            MenuAction(key: "6", label: "Gerar GEM", detail: self.shortcutDetail("gem", fallback: "sessions/analysis/gem.json")) {
+                try await self.executePipelineStage(.gem, description: "Gerar GEM")
             },
-            MenuAction(key: "C", label: "Chat CLI", detail: "chat com Codex local") {
-                let runtimeFlag = self.selectedRuntimeName == "Codex" ? "codex" : "claude"
-                try await self.executeScript(command: "npm", args: ["run", "chat-cli", "--", "--runtime", runtimeFlag], description: "HealthOS Chat CLI")
+            MenuAction(key: "C", label: "Chat CLI", detail: self.shortcutDetail("chat", fallback: "healthos:chat | aguardando runner Swift nativo")) {
+                print("Chat CLI nativo ainda nao conectado. Use o terminal livre para comandos explicitos se precisar do legado.")
             },
             MenuAction(key: "T", label: "Chat do paciente", detail: "abrir chat-agent com contexto de um paciente") {
                 print("Selecione um paciente (funcionalidade CLI nativa ainda não completa)")
@@ -229,9 +267,10 @@ public struct ProjectCounts {
                 let counts = self.collectCounts()
                 print("Status: \(counts.patients) pacientes, \(counts.audio) audios, \(counts.transcripts) transcricoes")
             },
-            MenuAction(key: "R", label: "Runtime LLM", detail: "atual: \(self.selectedRuntime)") {
-                self.selectedRuntime = self.selectedRuntimeName == "Codex" ? "ClaudeCode" : "Codex"
-                print("Runtime selecionado: \(self.selectedRuntimeName)")
+            MenuAction(key: "R", label: "Runtime LLM", detail: "atual: \(self.selectedRuntime.displayName)") {
+                self.selectedRuntime = self.nextRuntime(after: self.selectedRuntime)
+                LLMRuntimePreference.persist(self.selectedRuntime)
+                print("Runtime selecionado: \(self.selectedRuntime.displayName) (\(self.selectedRuntime.rawValue))")
             },
             MenuAction(key: "O", label: "Profissional", detail: "gerenciar workspace profissional") {
                 print("Profissional ativo: \(self.workspaceManager.activeProfessional?.id ?? "Nenhum")")
@@ -242,14 +281,11 @@ public struct ProjectCounts {
         ]
     }
 
-    private var selectedRuntimeName: String {
-        switch selectedRuntime.lowercased() {
-        case "codex":
-            return "Codex"
-        case "claudecode", "claude-code", "claude_code", "claude":
-            return "ClaudeCode"
-        default:
-            return "ClaudeAPI"
+    private func nextRuntime(after runtime: LLMRuntimeType) -> LLMRuntimeType {
+        let runtimes = LLMRuntimeType.allCases
+        guard let index = runtimes.firstIndex(of: runtime) else {
+            return .defaultRuntime
         }
+        return runtimes[(index + 1) % runtimes.count]
     }
 }
