@@ -26,7 +26,7 @@ public enum LLMRuntimePreference {
             return runtime
         }
 
-        return .defaultRuntime
+        return .fallbackRuntime
     }
 
     public static func resolveChat(

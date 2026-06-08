@@ -177,7 +177,10 @@ public enum LLMRuntimeType: String, Codable, CaseIterable, Identifiable, Sendabl
         }
     }
 
-    public static let defaultRuntime: LLMRuntimeType = .codex
+    public static let fallbackRuntime: LLMRuntimeType = .codex
+    public static var defaultRuntime: LLMRuntimeType {
+        LLMRuntimePreference.resolve()
+    }
 
     public init?(preferenceValue value: String?) {
         guard let value else { return nil }
