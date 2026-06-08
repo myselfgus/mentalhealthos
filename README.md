@@ -35,32 +35,31 @@ O **MentalHealthOS** (HealthOS) integra modelos de linguagem (Claude, Codex), fl
 ```mermaid
 mindmap
   root((MentalHealthOS))
-    Interfaces
-      HealthOSApp macOS SwiftUI
-      HealthOSCLI Terminal
-      chat‑cli interativo
-    Motor Clínico
-      PipelineEngine
-      Transcription Whisper
-      LLM Stage Runners
-      Chunking Adaptativo
-    Agentes LLM
-      ConversationOrchestrator
-      ContextArchitect
-      ClinicalSynthesizer
-      RiskSafetyReviewer
-      PipelineOperator
-      PatientAgentBuilder
-      QAValidator
-    Runtimes
-      ClaudeAPI
-      ClaudeCode
-      Codex
-    Dados e Workspaces
-      Profissionais
-      Pacientes
-      Sessões
-      Artefatos Clínicos
+    Interfaces::br::<i>Pontos de entrada e interação</i>
+      HealthOSApp macOS::br::<i>Interface nativa em SwiftUI</i>
+      HealthOSCLI::br::<i>Interação rápida via Terminal</i>
+      chat‑cli::br::<i>Modo interativo e multiagente</i>
+    Motor Clínico::br::<i>Processamento e análise de dados</i>
+      PipelineEngine::br::<i>Orquestrador determinístico de jobs</i>
+      Transcription Whisper::br::<i>Transcrição local de sessões</i>
+      LLM Stage Runners::br::<i>Executores de estágios cognitivos</i>
+      Chunking Adaptativo::br::<i>Divisão inteligente mantendo contexto</i>
+    Agentes LLM::br::<i>Especialistas cognitivos em loop</i>
+      ConversationOrchestrator::br::<i>Roteamento de tarefas e estados</i>
+      ContextArchitect::br::<i>Montagem dinâmica de referências</i>
+      ClinicalSynthesizer::br::<i>Geração de insights clínicos</i>
+      RiskSafetyReviewer::br::<i>Auditoria de segurança e compliance</i>
+      PipelineOperator::br::<i>Execução e correção de código/scripts</i>
+      PatientAgentBuilder::br::<i>Scaffolding de agentes individuais</i>
+      QAValidator::br::<i>Validação de schemas e testes</i>
+    Runtimes::br::<i>Abstração de modelos</i>
+      ClaudeAPI::br::<i>Chamadas via API da Anthropic</i>
+      ClaudeCode::br::<i>Agente com ferramentas locais</i>
+      Codex::br::<i>Execução local com ChatGPT</i>
+    Dados e Workspaces::br::<i>Estrutura de diretórios e contratos</i>
+      Profissionais::br::<i>Config, memórias e logs do terapeuta</i>
+      Pacientes::br::<i>Dossiês, index de sessões e artefatos</i>
+      Traces e Eventos::br::<i>Logs estruturados de telemetria</i>
 ```
 
 ---
