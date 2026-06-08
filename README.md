@@ -5,60 +5,101 @@
 O **MentalHealthOS** (HealthOS) integra modelos de linguagem (Claude, Codex), fluxos de processamento clínico e interfaces nativas em uma plataforma única, projetada para oferecer a profissionais e pacientes um ambiente seguro e auditável para transcrições, análises linguísticas, revisões clínicas e acompanhamento longitudinal.
 
 <p align="center">
-  <svg width="600" height="280" viewBox="0 0 600 280" fill="none" xmlns="http://www.w3.org/2000/svg">
-    <rect width="600" height="280" rx="8" fill="#181825"/>
-    <circle cx="20" cy="18" r="6" fill="#F38BA8"/>
-    <circle cx="40" cy="18" r="6" fill="#F9E2AF"/>
-    <circle cx="60" cy="18" r="6" fill="#A6E3A1"/>
-    <text x="90" y="22" fill="#CDD6F4" font-family="monospace" font-size="12">mentalhealthos --chat-cli</text>
+  <svg width="600" height="280" viewBox="0 0 600 280" xmlns="http://www.w3.org/2000/svg">
+    <style>
+      .bg { fill: #181825; rx: 8px; }
+      .bar-btn { r: 6px; }
+      .text-base { font-family: monospace; font-size: 12px; fill: #CDD6F4; }
+      .text-cmd { font-family: monospace; font-size: 13px; fill: #A6E3A1; }
+      .text-prompt { font-family: monospace; font-size: 13px; fill: #89B4FA; }
+      .cursor { fill: #CDD6F4; animation: blink 1s step-end infinite; }
+      
+      .step-1, .step-2, .step-3, .step-4, .step-5, .step-6 {
+        opacity: 0;
+        animation-duration: 12s;
+        animation-iteration-count: infinite;
+        animation-fill-mode: forwards;
+      }
+      
+      .step-1 { animation-name: show-step-1; }
+      .step-2 { animation-name: show-step-2; }
+      .step-3 { animation-name: show-step-3; }
+      .step-4 { animation-name: show-step-4; }
+      .step-5 { animation-name: show-step-5; }
+      .step-6 { animation-name: show-step-6; }
+
+      @keyframes blink {
+        50% { opacity: 0; }
+      }
+      
+      @keyframes show-step-1 {
+        0%, 8.3% { opacity: 0; }
+        12.5%, 100% { opacity: 1; }
+      }
+      @keyframes show-step-2 {
+        0%, 25% { opacity: 0; }
+        29.1%, 100% { opacity: 1; }
+      }
+      @keyframes show-step-3 {
+        0%, 41.6% { opacity: 0; }
+        45.8%, 100% { opacity: 1; }
+      }
+      @keyframes show-step-4 {
+        0%, 58.3% { opacity: 0; }
+        62.5%, 100% { opacity: 1; }
+      }
+      @keyframes show-step-5 {
+        0%, 75% { opacity: 0; }
+        79.1%, 100% { opacity: 1; }
+      }
+      @keyframes show-step-6 {
+        0%, 91.6% { opacity: 0; }
+        95.8%, 100% { opacity: 1; }
+      }
+    </style>
+
+    <rect width="600" height="280" class="bg"/>
+    <circle cx="20" cy="18" fill="#F38BA8" class="bar-btn"/>
+    <circle cx="40" cy="18" fill="#F9E2AF" class="bar-btn"/>
+    <circle cx="60" cy="18" fill="#A6E3A1" class="bar-btn"/>
+    <text x="90" y="22" class="text-base" style="font-weight: bold;">mentalhealthos --chat-cli</text>
     
     <!-- Linha 1: Input -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;1;1" keyTimes="0;0.05;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="20" y="60" fill="#89B4FA" font-family="monospace" font-size="13">dr-gustavo$</text>
-      <text x="110" y="60" fill="#A6E3A1" font-family="monospace" font-size="13">/run pipeline:gem --patient pat-01</text>
+    <g class="step-1">
+      <text x="20" y="65" class="text-prompt">dr-gustavo$</text>
+      <text x="110" y="65" class="text-cmd">/run pipeline:gem --patient pat-01</text>
     </g>
 
     <!-- Linha 2: Contexto -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.15;0.20;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="20" y="90" fill="#F9E2AF" font-family="monospace" font-size="12">⚙️ [ContextArchitect]</text>
-      <text x="170" y="90" fill="#CDD6F4" font-family="monospace" font-size="12">Mapeando referências de pat-01...</text>
+    <g class="step-2">
+      <text x="20" y="95" class="text-base" style="fill: #F9E2AF;">⚙️ [ContextArchitect]</text>
+      <text x="170" y="95" class="text-base">Mapeando referências de pat-01...</text>
     </g>
 
     <!-- Linha 3: Processamento -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.35;0.40;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="20" y="120" fill="#FAB387" font-family="monospace" font-size="12">🧠 [ClinicalSynthesizer]</text>
-      <text x="180" y="120" fill="#CDD6F4" font-family="monospace" font-size="12">Gerando grafo de espaço mental (GEM)...</text>
+    <g class="step-3">
+      <text x="20" y="125" class="text-base" style="fill: #FAB387;">🧠 [ClinicalSynthesizer]</text>
+      <text x="180" y="125" class="text-base">Gerando grafo de espaço mental (GEM)...</text>
     </g>
 
     <!-- Linha 4: Executando -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.55;0.60;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="40" y="150" fill="#A6E3A1" font-family="monospace" font-size="12">⚡ Codex Runtime:</text>
-      <text x="170" y="150" fill="#CDD6F4" font-family="monospace" font-size="12">Lendo transcrição (2.4k tokens)</text>
+    <g class="step-4">
+      <text x="40" y="155" class="text-base" style="fill: #A6E3A1;">⚡ Codex Runtime:</text>
+      <text x="170" y="155" class="text-base">Lendo transcrição (2.4k tokens)</text>
     </g>
 
     <!-- Linha 5: Safety check -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.70;0.75;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="20" y="180" fill="#EBA0AC" font-family="monospace" font-size="12">🛡️ [SafetyReviewer]</text>
-      <text x="160" y="180" fill="#A6E3A1" font-family="monospace" font-size="12">Auditado: Sem risco detectado, output liberado.</text>
+    <g class="step-5">
+      <text x="20" y="185" class="text-base" style="fill: #EBA0AC;">🛡️ [SafetyReviewer]</text>
+      <text x="160" y="185" class="text-base" style="fill: #A6E3A1;">Auditado: Sem risco detectado, output liberado.</text>
     </g>
 
     <!-- Linha 6: Sucesso -->
-    <g opacity="0">
-      <animate attributeName="opacity" values="0;0;1;1" keyTimes="0;0.85;0.90;1" dur="10s" repeatCount="indefinite" begin="0s"/>
-      <text x="20" y="220" fill="#A6E3A1" font-family="monospace" font-size="13">✅ Sucesso!</text>
-      <text x="100" y="220" fill="#89B4FA" font-family="monospace" font-size="12">Artefato salvo: patients/pat-01/sessions/s03/gem-result.json</text>
+    <g class="step-6">
+      <text x="20" y="225" class="text-cmd" style="fill: #A6E3A1; font-weight: bold;">✅ Sucesso!</text>
+      <text x="100" y="225" class="text-base" style="fill: #89B4FA;">Artefato salvo: patients/pat-01/sessions/s03/gem-result.json</text>
+      <rect x="520" y="213" width="8" height="15" class="cursor"/>
     </g>
-
-    <!-- Cursor Piscando -->
-    <rect x="100" y="206" width="8" height="15" fill="#CDD6F4" opacity="0">
-      <animate attributeName="opacity" values="1;0;1" keyTimes="0;0.5;1" dur="1s" repeatCount="indefinite" />
-      <animate attributeName="x" values="100;100;100;100;100;100;550" keyTimes="0;0.84;0.85;0.89;0.90;0.99;1" dur="10s" repeatCount="indefinite"/>
-    </rect>
   </svg>
 </p>
 
