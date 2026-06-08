@@ -4,18 +4,6 @@
 
 O **MentalHealthOS** (HealthOS) integra modelos de linguagem (Claude, Codex), fluxos de processamento clínico e interfaces nativas em uma plataforma única, projetada para oferecer a profissionais e pacientes um ambiente seguro e auditável para transcrições, análises linguísticas, revisões clínicas e acompanhamento longitudinal.
 
-```
-dr-gustavo$ mentalhealthos --chat-cli
-🤖 Iniciando sessão com o profissional ativo...
-
-dr-gustavo$ /run pipeline:gem --patient pat-01
-⚙️ [ContextArchitect] ➜ Mapeando referências e dossiê de pat-01...
-🧠 [ClinicalSynthesizer] ➜ Gerando grafo de espaço mental (GEM)...
-⚡ [Codex Runtime] ➜ Processando transcrição (2.4k tokens)...
-🛡️ [SafetyReviewer] ➜ Auditado: Sem risco detectado, output liberado.
-✅ Sucesso! Artefato salvo: patients/pat-01/sessions/s03/gem-result.json
-```
-
 ---
 
 ## 📑 Índice
